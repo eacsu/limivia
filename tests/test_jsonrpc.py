@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from limivia import AsyncLimivia, InvalidCommandError, Limivia, ProtocolError
+from limivia._compat import timeout_after
 from limivia.protocol import (
     MISSING_ID,
     LineReader,
@@ -84,7 +85,7 @@ def test_line_timeout_discards_until_next_boundary():
 async def collect(connection, ids):
     remaining = set(ids)
     events = {}
-    async with asyncio.timeout(2):
+    async with timeout_after(2):
         while remaining:
             event = await connection.recv()
             rid = getattr(event, "request_id", None)
@@ -576,7 +577,7 @@ def test_late_internal_error_does_not_leak_after_request_retirement():
             }
         )
         with pytest.raises(TimeoutError):
-            async with asyncio.timeout(0.02):
+            async with timeout_after(0.02):
                 await c.recv()
 
     asyncio.run(connect_test(case))

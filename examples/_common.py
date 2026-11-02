@@ -7,6 +7,9 @@ from collections.abc import Callable, Coroutine
 from typing import Any
 
 from limivia import LimiviaError
+from limivia._compat import add_note, timeout_after
+
+__all__ = ["add_note", "run", "timeout_after"]
 
 
 def run(main: Callable[[], None] | Callable[[], Coroutine[Any, Any, None]]) -> None:

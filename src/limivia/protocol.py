@@ -10,6 +10,7 @@ import time
 from typing import Any, get_args
 
 from pydantic import TypeAdapter, ValidationError
+from typing_extensions import TypeAliasType
 
 from ._exceptions import InvalidCommandError, ProtocolError
 from ._schema import OPERATIONS, REQUIRED
@@ -285,7 +286,7 @@ class MissingId:
 
 
 MISSING_ID = MissingId()
-type RpcId = str | int | float | None
+RpcId = TypeAliasType("RpcId", str | int | float | None)
 
 
 def valid_id(value: Any) -> bool:

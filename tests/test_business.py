@@ -18,11 +18,12 @@ from limivia import (
     ResultUnknownError,
     SubscriptionOverflowError,
 )
+from limivia._compat import timeout_after
 from tests.fakes import FakeBackend, FakeTransport
 
 
 async def until(predicate):
-    async with asyncio.timeout(2):
+    async with timeout_after(2):
         while not predicate():
             await asyncio.sleep(0.001)
 

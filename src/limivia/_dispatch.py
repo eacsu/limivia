@@ -7,6 +7,7 @@ import math
 from dataclasses import dataclass
 from typing import Any
 
+from ._compat import add_note, timeout_after
 from ._connection import AsyncConnection
 from ._exceptions import (
     ControlBusyError,
@@ -99,10 +100,10 @@ class Ticket:
         if timeout is not None and (not math.isfinite(timeout) or timeout <= 0):
             raise ValueError("等待超时必须有限且大于零")
         try:
-            async with asyncio.timeout(timeout):
+            async with timeout_after(timeout):
                 return check(await asyncio.shield(self.accepted if accepted else self.terminal))
         except asyncio.CancelledError as exc:
-            exc.add_note(f"仅取消等待；请求 {self.request_id} 的设备作业未被取消，也不会自动重放")
+            add_note(exc, f"仅取消等待；请求 {self.request_id} 的设备作业未被取消，也不会自动重放")
             exc.request_id = self.request_id  # type: ignore[attr-defined]
             exc.job = self.job  # type: ignore[attr-defined]
             raise

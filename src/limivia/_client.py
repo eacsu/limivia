@@ -4,11 +4,13 @@ import asyncio
 import math
 from contextlib import AbstractContextManager
 from functools import partial
-from typing import Protocol, Self
+from typing import Protocol
 
 from anyio.from_thread import BlockingPortal, start_blocking_portal
+from typing_extensions import Self
 
 from ._board import AsyncBoard, AsyncRaw
+from ._compat import wait_for
 from ._connection import AsyncConnection
 from ._exceptions import DeviceConnectionError, DeviceSelectionError
 from ._sync import Connection, RawEventStream
@@ -47,7 +49,7 @@ class AsyncDevices:
             raise DeviceConnectionError("正在连接设备或搜索设备，请先断开或等待搜索结束。")
         client._scanning = asyncio.current_task()
         try:
-            devices = await asyncio.wait_for(client._backend.discover(kind), timeout=12)
+            devices = await wait_for(client._backend.discover(kind), timeout=12)
             return [DeviceInfo.model_validate(device) for device in devices]
         finally:
             client._scanning = None

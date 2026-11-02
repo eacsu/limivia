@@ -7,7 +7,7 @@ from time import sleep
 from limivia import Limivia, TransportKind
 from limivia.constants import FlowStep
 
-from .._common import run
+from .._common import add_note, run
 
 
 def main():
@@ -45,7 +45,7 @@ def main():
             sleep(0.3)
             print(board.flow.get(flow_id=flow_id).to_json())
         finally:
-            original = sys.exception()
+            original = sys.exc_info()[1]
             try:
                 if flow_id is not None:
                     board.flow.stop(flow_id=flow_id)
@@ -57,7 +57,7 @@ def main():
             except Exception as error:
                 if original is None:
                     raise
-                original.add_note(f"流程/文件清理未确认：{error}")
+                add_note(original, f"流程/文件清理未确认：{error}")
 
 
 if __name__ == "__main__":

@@ -15,7 +15,7 @@ with Limivia.connect(kind=TransportKind.USB) as board:
         led.write(Level.LOW)
 ```
 
-使用 Python3.12、Poetry 和项目内 `.venv`，从仓库根目录运行：
+支持 Python **3.10、3.11、3.12**，开发以 3.10 为基线；使用 Poetry 和项目内 `.venv`，从仓库根目录运行：
 
 ```bash
 poetry run python -m examples.peripherals.gpio
@@ -77,7 +77,7 @@ LIMIVIA_DEVICE_ID=目标MAC poetry run python -m examples.device.connect --kind 
 
 ## USB 配网后通过 WebSocket 点灯
 
-[完整示例](device/usb_wifi_websocket.py)适用于 SDK / 固件 0.3.0a7（r2），从 USB 开始完成 Wi-Fi 配置、等待 IP、释放 USB 会话，再通过 WebSocket 核对同一设备身份、点亮 D5 / GPIO13、读取确认电平，按回车熄灭并释放资源。
+[完整示例](device/usb_wifi_websocket.py)适用于 SDK 0.3.0 / 固件 0.3.0a7（r2），从 USB 开始完成 Wi-Fi 配置、等待 IP、释放 USB 会话，再通过 WebSocket 核对同一设备身份、点亮 D5 / GPIO13、读取确认电平，按回车熄灭并释放资源。
 
 ```bash
 poetry run python -m examples.device.usb_wifi_websocket --help

@@ -4,6 +4,7 @@ import threading
 import pytest
 
 from limivia import AsyncLimivia, DeviceConnectionError, Limivia, QueueFullError
+from limivia._compat import timeout_after
 from limivia.types import JobCompletedEvent
 from tests.fakes import FakeBackend, result
 
@@ -175,7 +176,7 @@ def test_old_session_notifications_and_duplicate_responses_are_ignored():
         assert (await result(c, request)).type == "state.completed"
         await t.emit({"id": t.commands[-1]["id"], "ok": True, "result": {}})
         with pytest.raises(TimeoutError):
-            async with asyncio.timeout(0.03):
+            async with timeout_after(0.03):
                 await c.recv()
 
     run(connect_test(case))

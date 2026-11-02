@@ -5,6 +5,8 @@ import base64
 import copy
 import json
 
+from limivia._compat import timeout_after
+
 HELLO = {
     "protocol": 3,
     "jsonrpc": "2.0",
@@ -379,7 +381,7 @@ class FakeBackend:
 
 
 async def result(connection, request_id, *, accepted=False):
-    async with asyncio.timeout(2):
+    async with timeout_after(2):
         while True:
             event = await connection.recv()
             if getattr(event, "request_id", None) == request_id:

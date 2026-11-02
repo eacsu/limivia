@@ -212,3 +212,38 @@ IoT light sleep 先保存 accepted job_id，显式关闭/恢复链路，在同�
 以 SDK c4499b8、固件 c92b2a0 和 server d333afe 联调。USB 目标 e4:b0:63:ca:b4:78，bus 实际 ELF build `9e80cd5bf1602899e3d0967c1146436554dcba6ec166666b7b09b23f27e88a0f`，boot `f5eb6a9cc04609d8`。无头 Chromium 经正式同源后端点亮 D5/GPIO13，60 秒 3,600 帧内无空闲标签问号或按钮可用性翻转，20 次切换及另一页面直接控制均通过。通知 gap=0，设备 lost_notifications 前后均为 0；最终关闭资源并确认集合为空。
 
 诊断计数仍如实保留：本轮 rejected 0→1、admission_rejected 0→2、tx_failed 0→0；它们不等同于通知丢失，未观察到业务动作失败或重放。证据在 server 的 Git 忽略目录 artifacts/board-state-session/live-check.json。仅测 USB；没有外接负载、无线互通或仪器测量结论。
+
+
+## 2026-11-02：Python 3.10～3.12 兼容
+
+仅修改 SDK，版本保持 `0.3.0a7`，协议仍为 v3；server 和固件未修改。开发 `.venv` 已切换为 Python 3.10.20，Poetry 2.1.3 管理依赖。
+
+|实际解释器|完整测试|Ruff|mypy（3.10 目标）|锁文件检查|sdist / wheel 构建|
+|---|---|---|---|---|---|
+|CPython 3.10.20|800 通过|通过|51 个文件通过|通过|通过|
+|CPython 3.11.18|800 通过|通过|51 个文件通过|通过|通过|
+|CPython 3.12.3|800 通过|通过|51 个文件通过|通过|通过|
+
+各环境运行 `poetry run pytest -q`、`poetry run ruff check src tests examples`、`poetry run mypy`、`poetry check --lock`、`poetry build`。3.11/3.12 在仓库外临时副本的独立 `.venv` 验证，3.10 使用当前项目 `.venv`。本机 Poetry 最初创建的 3.10/3.11 环境实际误用了 3.12；这部分结果不计入对应版本验收。改用目标解释器的 `-m venv` 创建环境后，由 Poetry 接管，并断言 `sys.version_info` 再验证。
+
+原有 784 项测试全部保留，新增 16 项覆盖超时异常统一、屏蔽任务存活、外部取消、嵌套超时、原异常身份与备注、清理失败保留，以及 BLE 两种超时异常的诊断。命名类型别名仍保留 `__value__`，事件 discriminator、常量完整性和静态类型收窄检查通过。
+
+运行依赖新增显式 `typing-extensions` 和 Python 3.10 条件依赖 `async-timeout`；Linux / Python 3.10 约束 `dbus-fast==3.1.2`，本次统一锁文件在三个版本均选用该版本。其余既有运行库保持原锁定版本，并补齐 `exceptiongroup`、`tomli` 等低版本条件依赖。开发组保留 `async-timeout`，供较新解释器上以 3.10 为目标的 mypy 使用。
+
+验证边界：业务和 USB/BLE 适配使用模拟设备；网络测试使用真实 websockets / paho-mqtt 客户端及 loopback 报文夹具，不能作为外部 broker 或物理设备互通结论。没有操作实机。用户随后要求以确认 3.10 为收尾目标，因此未继续执行仓库外 wheel 安装验收；表中构建通过仅指产物构建。未安装到 server，未发布 PyPI，未推送 Git。
+
+
+## 2026-11-02：发布 PyPI 0.3.0
+
+用户明确授权发布 SDK `0.3.0`。源码与包元数据同步更新，固件适配版本仍为 `0.3.0a7` / 协议 v3。Python 3.10.20 下 800 项测试、Ruff、mypy、Poetry 锁文件检查及 sdist / wheel 构建全部通过。
+
+仓库外独立 Python 3.10.20 环境安装最终 wheel，`python -I` 确认导入来自该环境，源码和安装版本均为 0.3.0、Python 范围为 >=3.10,<3.13、py.typed 存在；pip check 与 CLI --help 通过。该环境重新解析运行依赖，实际使用 pydantic 2.14.2、anyio 4.16.0、dbus-fast 3.1.2；项目完整测试依据 Poetry 锁文件。
+
+wheel 和 sdist 已上传，PyPI JSON API 确认版本、Python 范围及 SHA256 与本地一致。令牌仅在内存中读取并传给发布子进程，未输出或另存文件。未推送 Git、安装到 server 或操作实机。
+
+|PyPI 文件|SHA256|
+|---|---|
+|`limivia-0.3.0-py3-none-any.whl`|`543b37923b3e9ecad6a30bb8ccae89670ff19dc42ede583bb7777283f4b2bb3b`|
+|`limivia-0.3.0.tar.gz`|`e3bc95689b1f60043c8c873b20c8601967b9f22656b03f8f12c36f63fab90bb7`|
+
+发布地址：https://pypi.org/project/limivia/0.3.0/

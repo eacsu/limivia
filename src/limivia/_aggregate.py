@@ -5,6 +5,9 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING, Literal
 
+from typing_extensions import TypeAliasType
+
+from ._compat import timeout_after
 from ._exceptions import DeviceConnectionError, ProtocolError, QueueFullError
 from .constants import ErrorReason, ErrorSource, OperationName, QueryName
 from .types import (
@@ -27,7 +30,7 @@ from .types import (
 if TYPE_CHECKING:
     from ._connection import AsyncConnection
 
-type AggregateOperation = Literal["discover", "state.snapshot"]
+AggregateOperation = TypeAliasType("AggregateOperation", Literal["discover", "state.snapshot"])
 
 
 class QueryFailure(Exception):
@@ -169,7 +172,7 @@ async def snapshot(connection: AsyncConnection) -> StateSnapshot:
 async def run(connection: AsyncConnection, op: AggregateOperation, rid: int, refresh: bool) -> None:
     event: DeviceEvent
     try:
-        async with asyncio.timeout(connection._job_timeout):
+        async with timeout_after(connection._job_timeout):
             if op == QueryName.DISCOVER:
                 result = await discover(connection, refresh)
                 event = DiscoveryCompletedEvent(

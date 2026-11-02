@@ -5,10 +5,12 @@ from __future__ import annotations
 import asyncio
 import base64
 import struct
-from typing import TYPE_CHECKING, Any, Self, Unpack
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from pydantic import ValidationError
+from typing_extensions import Self, Unpack
 
+from ._compat import timeout_after
 from ._dispatch import Ticket, payload
 from ._exceptions import (
     DeviceConnectionError,
@@ -45,7 +47,10 @@ if TYPE_CHECKING:
     from ._board import AsyncBoard
 
 
-def _confirmed[T: ConfirmedState](model: type[T], data: dict) -> T:
+T = TypeVar("T", bound=ConfirmedState)
+
+
+def _confirmed(model: type[T], data: dict) -> T:
     try:
         return model.model_validate(data)
     except ValidationError as exc:
@@ -235,61 +240,53 @@ class AsyncResource:
 
     async def _close(self, cascade: bool, recover: bool):
         try:
-            async with asyncio.timeout(self._board._cleanup_timeout):
-                async with self._lock:
-                    await self._resolve_open()
-                    if self._info is not None:
-                        await self._validate()
-                        op = (
-                            OperationName.RESOURCE_RECOVER
-                            if recover
-                            else OperationName.RESOURCE_CLOSE
-                        )
-                        args: dict[str, Any] = {
-                            "resource": self._info.id,
-                            "instance": self._info.instance,
-                        }
-                        if cascade:
-                            args["cascade"] = True
-                        tree = [self._info]
-                        if cascade:
-                            snapshot = await self._board.state.snapshot()
-                            ids = {self._info.id}
-                            for _ in snapshot.resources:
-                                ids.update(r.id for r in snapshot.resources if r.parent in ids)
-                            tree = [r for r in snapshot.resources if r.id in ids]
-                            if not tree:
-                                tree = [self._info]
-                        await self._board._request(op, args)
-                        # cascade RPC 仅确认 closing；普通 close 也确认资源已删除。
-                        for original in tree:
-                            while True:
-                                try:
-                                    current = await self._board._resource_info(original.id)
-                                except DeviceRejectedError as exc:
-                                    if (
-                                        exc.error
-                                        and exc.error.reason == ErrorReason.RESOURCE_NOT_FOUND
-                                    ):
-                                        break
-                                    raise
-                                if current.instance != original.instance:
+            async with timeout_after(self._board._cleanup_timeout), self._lock:
+                await self._resolve_open()
+                if self._info is not None:
+                    await self._validate()
+                    op = OperationName.RESOURCE_RECOVER if recover else OperationName.RESOURCE_CLOSE
+                    args: dict[str, Any] = {
+                        "resource": self._info.id,
+                        "instance": self._info.instance,
+                    }
+                    if cascade:
+                        args["cascade"] = True
+                    tree = [self._info]
+                    if cascade:
+                        snapshot = await self._board.state.snapshot()
+                        ids = {self._info.id}
+                        for _ in snapshot.resources:
+                            ids.update(r.id for r in snapshot.resources if r.parent in ids)
+                        tree = [r for r in snapshot.resources if r.id in ids]
+                        if not tree:
+                            tree = [self._info]
+                    await self._board._request(op, args)
+                    # cascade RPC 仅确认 closing；普通 close 也确认资源已删除。
+                    for original in tree:
+                        while True:
+                            try:
+                                current = await self._board._resource_info(original.id)
+                            except DeviceRejectedError as exc:
+                                if exc.error and exc.error.reason == ErrorReason.RESOURCE_NOT_FOUND:
                                     break
-                                if current.state == ResourceState.FAULT:
-                                    error = ResourceCleanupError("资源关闭后进入 fault，仍保留占用")
-                                    error.resource_info = current
-                                    raise error
-                                await asyncio.sleep(self._board._core._poll)
-                        if cascade:
-                            removed = {(r.id, r.instance) for r in tree}
-                            for owned in self._board._owned.copy():
-                                if (
-                                    owned is not self
-                                    and owned._info
-                                    and (owned._info.id, owned._info.instance) in removed
-                                ):
-                                    owned._closed = True
-                                    self._board._owned.remove(owned)
+                                raise
+                            if current.instance != original.instance:
+                                break
+                            if current.state == ResourceState.FAULT:
+                                error = ResourceCleanupError("资源关闭后进入 fault，仍保留占用")
+                                error.resource_info = current
+                                raise error
+                            await asyncio.sleep(self._board._core._poll)
+                    if cascade:
+                        removed = {(r.id, r.instance) for r in tree}
+                        for owned in self._board._owned.copy():
+                            if (
+                                owned is not self
+                                and owned._info
+                                and (owned._info.id, owned._info.instance) in removed
+                            ):
+                                owned._closed = True
+                                self._board._owned.remove(owned)
             self._closed = True
             if self in self._board._owned:
                 self._board._owned.remove(self)

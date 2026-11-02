@@ -97,7 +97,7 @@ class BluetoothTransport:
     async def open(self) -> None:
         try:
             await self.client.connect()
-        except TimeoutError as exc:
+        except (TimeoutError, asyncio.TimeoutError) as exc:
             raise DeviceConnectionError(
                 "BLE GATT 建连超时（尚未发送业务请求），请检查适配器和系统蓝牙日志。"
             ) from exc

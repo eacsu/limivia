@@ -12,7 +12,7 @@ from limivia import AsyncLimivia
 from tests.fakes import FakeBackend, FakeTransport
 
 
-def use_backend(monkeypatch, module, backend, **asyncio_functions):
+def use_backend(monkeypatch, module, backend):
     monkeypatch.setattr(
         module,
         "AsyncLimivia",
@@ -24,7 +24,7 @@ def use_backend(monkeypatch, module, backend, **asyncio_functions):
     async def sleep(delay):
         await asyncio.sleep(0)
 
-    monkeypatch.setattr(module, "asyncio", SimpleNamespace(sleep=sleep, **asyncio_functions))
+    monkeypatch.setattr(module, "asyncio", SimpleNamespace(sleep=sleep))
 
 
 def test_async_blink_runs_five_cycles_and_releases(monkeypatch):
@@ -60,7 +60,7 @@ def test_async_adc_prints_only_three_decoded_samples(monkeypatch, capsys):
                         ]
 
     backend = FakeBackend(Sampling())
-    use_backend(monkeypatch, async_adc, backend, timeout=asyncio.timeout)
+    use_backend(monkeypatch, async_adc, backend)
     asyncio.run(async_adc.main())
     samples = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
     assert [sample["raw"] for sample in samples] == [100, 101, 102]

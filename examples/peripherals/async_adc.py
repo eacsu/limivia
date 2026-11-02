@@ -2,7 +2,7 @@ import asyncio
 
 from limivia import AsyncLimivia, Pins, TransportKind
 
-from .._common import run
+from .._common import run, timeout_after
 
 
 async def main():
@@ -10,7 +10,7 @@ async def main():
     async with AsyncLimivia.connect(kind=TransportKind.USB) as board:
         async with board.adc.open(Pins.GPIO0, interval_ms=100) as adc:
             remaining = 3
-            async with asyncio.timeout(10):
+            async with timeout_after(10):
                 while remaining:
                     for sample in (await adc.events())[:remaining]:
                         print(sample.to_json())

@@ -10,6 +10,7 @@ from typing import Any, Literal
 
 from anyio import CancelScope
 
+from ._compat import timeout_after, wait_for
 from ._exceptions import DeviceConnectionError, InvalidCommandError, ProtocolError, QueueFullError
 from .constants import (
     ErrorReason,
@@ -160,7 +161,7 @@ class AsyncConnection(Resources[Awaitable[int]]):
 
     async def _open(self) -> None:
         try:
-            async with asyncio.timeout(self._connect_timeout):
+            async with timeout_after(self._connect_timeout):
                 await self._transport.open()
                 if self._closed:
                     raise DeviceConnectionError("连接已关闭")
@@ -518,7 +519,7 @@ class AsyncConnection(Resources[Awaitable[int]]):
         try:
             while not self._closed:
                 try:
-                    await asyncio.wait_for(self._job_wake.wait(), timeout=self._poll)
+                    await wait_for(self._job_wake.wait(), timeout=self._poll)
                 except TimeoutError:
                     pass
                 self._job_wake.clear()
@@ -558,7 +559,7 @@ class AsyncConnection(Resources[Awaitable[int]]):
                     try:
                         # Keep the read-only RPC owned by its writer after the job deadline.
                         # Cancelling its future would otherwise terminate the management lane.
-                        reply = await asyncio.wait_for(
+                        reply = await wait_for(
                             asyncio.shield(query.future),
                             timeout=max(0, item.deadline - asyncio.get_running_loop().time()),
                         )
@@ -636,7 +637,7 @@ class AsyncConnection(Resources[Awaitable[int]]):
                     continue
                 started = asyncio.get_running_loop().time()
                 try:
-                    event = await asyncio.wait_for(
+                    event = await wait_for(
                         asyncio.shield(request.future),
                         timeout=min(
                             self._timeout,
@@ -784,7 +785,7 @@ class AsyncConnection(Resources[Awaitable[int]]):
         self, lane: int, urgent: bool, requests: list[_Request], deadline: float
     ):
         try:
-            await asyncio.wait_for(
+            await wait_for(
                 asyncio.shield(asyncio.gather(*(r.future for r in requests))),
                 timeout=max(0, deadline - asyncio.get_running_loop().time()),
             )
@@ -812,7 +813,7 @@ class AsyncConnection(Resources[Awaitable[int]]):
         )
         self._pending[request.id] = request
         await self._send_frame(request, 1)
-        async with asyncio.timeout(self._timeout):
+        async with timeout_after(self._timeout):
             reply = await asyncio.shield(request.future)
         if not isinstance(reply, HelloCompletedEvent):
             raise DeviceConnectionError("序号轮换握手失败")
@@ -913,7 +914,7 @@ class AsyncConnection(Resources[Awaitable[int]]):
                 self._revoke(request)
         deadline = asyncio.get_running_loop().time() + self._timeout
         try:
-            await asyncio.wait_for(self._transport.write(data), timeout=min(3, self._timeout))
+            await wait_for(self._transport.write(data), timeout=min(3, self._timeout))
         except TimeoutError:
             self._terminate(
                 DeviceError(
@@ -1220,7 +1221,7 @@ class AsyncConnection(Resources[Awaitable[int]]):
             *self._tasks, *self._aggregate_tasks, *self._rpc_tasks, return_exceptions=True
         )
         try:
-            await asyncio.wait_for(self._transport.close(), timeout=5)
+            await wait_for(self._transport.close(), timeout=5)
         except Exception as exc:  # noqa: BLE001 -- report host cleanup without losing device errors
             self._close_error = DeviceConnectionError("传输资源释放失败")
             self._close_error.__cause__ = exc

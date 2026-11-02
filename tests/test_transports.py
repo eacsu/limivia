@@ -191,3 +191,26 @@ def test_gatt_connection_error_keeps_the_original_cause(monkeypatch):
         assert isinstance(error.value.__cause__, ConnectionError)
 
     asyncio.run(run())
+
+
+@pytest.mark.parametrize("error_type", [TimeoutError, asyncio.TimeoutError])
+def test_gatt_timeout_keeps_specific_diagnostic_and_cause(monkeypatch, error_type):
+    from limivia import DeviceConnectionError
+
+    original = error_type("GATT deadline")
+
+    class Client:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def connect(self):
+            raise original
+
+    monkeypatch.setattr("limivia.transports.BleakClient", Client)
+
+    async def run():
+        with pytest.raises(DeviceConnectionError, match="BLE GATT 建连超时") as caught:
+            await BluetoothTransport("test").open()
+        assert caught.value.__cause__ is original
+
+    asyncio.run(run())

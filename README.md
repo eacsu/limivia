@@ -1,8 +1,8 @@
 # LIMIVIA Python SDK
 
-**0.3.0a7**，面向合宙 CORE ESP32-C3 简约版固件 **0.3.0a7 / JSON-RPC 2.0 / 协议 v3**。USB、BLE、WebSocket、MQTT 共用协议核心；同步 `Limivia` 和异步 `AsyncLimivia` 提供相同的业务语义。
+**0.3.0**，支持 Python **3.10、3.11、3.12**，面向合宙 CORE ESP32-C3 简约版固件 **0.3.0a7 / JSON-RPC 2.0 / 协议 v3**。USB、BLE、WebSocket、MQTT 共用协议核心；同步 `Limivia` 和异步 `AsyncLimivia` 提供相同的业务语义。
 
-普通方法等待设备确认后返回结果，失败抛类型化异常。SDK 负责请求关联、作业查询、控制权申请和资源释放；高级提交式接口保留在 `board.raw`。本次 Python API 有破坏性调整，见[迁移说明](docs/migration-v3.md)。开发版为 `0.3.0a7`；不要直接将本地 SDK 安装到尚未适配的 server 环境。
+普通方法等待设备确认后返回结果，失败抛类型化异常。SDK 负责请求关联、作业查询、控制权申请和资源释放；高级提交式接口保留在 `board.raw`。本次 Python API 有破坏性调整，见[迁移说明](docs/migration-v3.md)。当前 SDK 版本为 `0.3.0`；不要直接将本地 SDK 安装到尚未适配的 server 环境。
 
 
 ## 0.3.0a7：WebSocket 会话与 PWM 确认修复
@@ -63,14 +63,19 @@ asyncio.run(main())
 
 ## 安装与连接
 
-开发使用 Python **3.12**、Poetry 和项目内 `.venv`：
+SDK 支持 Python **3.10、3.11、3.12**（`>=3.10,<3.13`），开发以 **3.10** 为基线，使用 Poetry 和项目内 `.venv`：
 
 ```bash
-poetry env use python3.12
+poetry env use python3.10
+poetry run python --version
 poetry install
 poetry run limivia scan --kind usb
 poetry build
 ```
+
+确认解释器输出为预期版本再安装和验证。如果本机 Poetry 创建的环境版本与指定版本不符，可先用目标解释器创建 `.venv`（例如 `python3.10 -m venv .venv`），再运行 `poetry env use .venv/bin/python` 和 `poetry install`；已有错误版本的环境应先移走或重建。Windows 的解释器路径为 `.venv\Scripts\python.exe`。
+
+SDK 的同步／异步接口及 USB、BLE、WebSocket、MQTT 在三个 Python 版本上保持相同语义。兼容性所需的依赖版本和条件依赖由 Poetry 锁文件管理；本轮只调整 SDK，相邻 server 的 Python 版本要求仍由其自身项目声明。
 
 新建连接可传 `target`、`options`、`expected_device_id` 和客户端设置，例如 `timeout=6`、`connect_timeout=20`、`job_timeout=30`、`job_poll_interval=0.1`、`event_queue_size=256`。`timeout` 为单次 RPC 确认期限，`job_timeout` 为作业跟踪期限；资源清理有界，期限由这两项共同决定。
 
@@ -237,6 +242,8 @@ poetry run mypy
 poetry check --lock
 poetry build
 ```
+
+涉及 Python 兼容性、依赖或打包约束的改动，须在 3.10、3.11、3.12 的独立环境分别执行以上命令，并验证仓库外安装的 wheel。mypy 固定以 3.10 检查，不能代替三个实际解释器的运行验证；具体环境与结果见[验证记录](docs/verification.md)。
 
 本轮业务层重构使用模拟设备和真实客户端 loopback 测试，**没有进行实物验证**。历史单板记录不能替代新业务 API 的硬件验收，内部 UART 回环也不能作为外部器件互通或物理精度证据。
 

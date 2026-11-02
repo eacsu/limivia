@@ -6,6 +6,7 @@ import asyncio
 from collections.abc import Coroutine
 from typing import Any
 
+from ._compat import add_note, wait_for
 from ._exceptions import ResourceCleanupError
 
 
@@ -15,7 +16,7 @@ def record_cleanup(original: BaseException, error: BaseException) -> None:
         errors = []
         original.cleanup_errors = errors  # type: ignore[attr-defined]
     if error not in errors:
-        original.add_note(f"另有清理失败：{type(error).__name__}: {error}")
+        add_note(original, f"另有清理失败：{type(error).__name__}: {error}")
         errors.append(error)
 
 
@@ -31,7 +32,7 @@ async def cleanup(
         while True:
             remaining = max(0, deadline - asyncio.get_running_loop().time())
             try:
-                await asyncio.wait_for(asyncio.shield(task), remaining)
+                await wait_for(asyncio.shield(task), remaining)
                 break
             except asyncio.CancelledError as exc:
                 if task.cancelled():

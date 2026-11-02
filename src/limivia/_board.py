@@ -6,6 +6,7 @@ import asyncio
 from collections.abc import Awaitable
 from typing import Any, Literal
 
+from ._compat import timeout_after
 from ._connection import AsyncConnection
 from ._dispatch import Dispatcher, EventStream, Ticket, check, payload
 from ._exceptions import DeviceConnectionError, InvalidCommandError, OperationError
@@ -204,7 +205,7 @@ class AsyncJob:
                 await asyncio.sleep(self._board._core._poll)
 
         try:
-            async with asyncio.timeout(timeout or self._board._core._job_timeout):
+            async with timeout_after(timeout or self._board._core._job_timeout):
                 return await query()
         except TimeoutError as exc:
             if isinstance(exc, OperationError):
@@ -420,7 +421,7 @@ class AsyncBoard:
         self._closing = True
         original: BaseException | None = None
         try:
-            async with asyncio.timeout(self._cleanup_timeout):
+            async with timeout_after(self._cleanup_timeout):
                 await self._close_resources()
         except BaseException as exc:
             original = exc

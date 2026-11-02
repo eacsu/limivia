@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from functools import partial
-from typing import TYPE_CHECKING, Any, Self, Unpack
+from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
 from anyio.from_thread import BlockingPortal
+from typing_extensions import Self, Unpack
 
 from ._board import AsyncBoard, AsyncJob, AsyncSubscription, Topic
 from ._peripherals import AsyncADCInput, AsyncGPIOPin, AsyncPWMOutput, AsyncResource, AsyncUARTPort
@@ -38,8 +39,10 @@ from .types.results import (
     UARTConfig,
 )
 
+R = TypeVar("R", bound=AsyncResource)
 
-class Resource[R: AsyncResource]:
+
+class Resource(Generic[R]):
     def __init__(self, resource: R, portal: BlockingPortal):
         self._async = resource
         self._portal = portal
