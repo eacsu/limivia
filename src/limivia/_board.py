@@ -6,6 +6,7 @@ import asyncio
 from collections.abc import Awaitable
 from typing import Any, Literal
 
+from ._compat import timeout_after
 from ._connection import AsyncConnection
 from ._dispatch import Dispatcher, EventStream, Ticket, check, payload
 from ._exceptions import DeviceConnectionError, InvalidCommandError, OperationError
@@ -204,7 +205,7 @@ class AsyncJob:
                 await asyncio.sleep(self._board._core._poll)
 
         try:
-            async with asyncio.timeout(timeout or self._board._core._job_timeout):
+            async with timeout_after(timeout or self._board._core._job_timeout):
                 return await query()
         except TimeoutError as exc:
             if isinstance(exc, OperationError):
@@ -222,6 +223,16 @@ class AsyncJobs:
         parsed = parse_command(command)
         if parsed.type not in JOB_OPERATIONS:
             raise InvalidCommandError("该操作不产生设备作业，请使用普通业务方法或 raw")
+        direct = parsed.type == OperationName.RESOURCE_OPEN and parsed.params.get("kind") == "gpio"
+        if parsed.type == OperationName.RESOURCE_CALL:
+            info = await self.board._resource_info(parsed.params["resource"])
+            direct = (
+                info.kind == "gpio" and parsed.params["action"] in {"read", "write", "status"}
+            ) or (info.kind == "pwm" and parsed.params["action"] in {"duty", "status"})
+        if direct:
+            raise InvalidCommandError(
+                "该操作直接返回确认结果，不产生公开作业；请使用业务方法或 raw"
+            )
         await self.board._prepare(parsed)
         ticket = self.board._hub.submit(parsed)
         event = await ticket.wait(accepted=True)
@@ -410,7 +421,7 @@ class AsyncBoard:
         self._closing = True
         original: BaseException | None = None
         try:
-            async with asyncio.timeout(self._cleanup_timeout):
+            async with timeout_after(self._cleanup_timeout):
                 await self._close_resources()
         except BaseException as exc:
             original = exc

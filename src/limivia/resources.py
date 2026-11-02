@@ -1,24 +1,26 @@
 """v3 参数门面；raw 执行器返回请求 ID，业务执行器等待确认后返回结果。"""
 
 from collections.abc import Callable
-from typing import Any, Literal
+from typing import Any, Generic, Literal, TypeVar
 
 from .constants import OperationName
 from .types.commands import ClientEvent, ClientEventParam
 from .types.models import ResourceKind
 
+T = TypeVar("T")
 
-class Resource[T]:
+
+class Resource(Generic[T]):
     def __init__(self, send: Callable[[ClientEvent | ClientEventParam], T]):
         self._send = send
 
 
-class SessionResource[T](Resource[T]):
+class SessionResource(Resource[T]):
     def ping(self) -> T:
         return self._send({"type": OperationName.SESSION_PING, "params": {}})
 
 
-class EventsResource[T](Resource[T]):
+class EventsResource(Resource[T]):
     def subscribe(
         self,
         *,
@@ -35,7 +37,7 @@ class EventsResource[T](Resource[T]):
         return self._send({"type": OperationName.EVENT_UNSUBSCRIBE, "params": {}})
 
 
-class ControlResource[T](Resource[T]):
+class ControlResource(Resource[T]):
     def acquire(self) -> T:
         return self._send({"type": OperationName.CONTROL_ACQUIRE, "params": {}})
 
@@ -43,12 +45,12 @@ class ControlResource[T](Resource[T]):
         return self._send({"type": OperationName.CONTROL_RELEASE, "params": {}})
 
 
-class OutputsResource[T](Resource[T]):
+class OutputsResource(Resource[T]):
     def stop(self) -> T:
         return self._send({"type": OperationName.OUTPUTS_STOP, "params": {}})
 
 
-class CapabilitiesResource[T](Resource[T]):
+class CapabilitiesResource(Resource[T]):
     def retrieve(self, *, page: int | None = None) -> T:
         params: dict[str, Any] = {}
         if page is not None:
@@ -56,7 +58,7 @@ class CapabilitiesResource[T](Resource[T]):
         return self._send({"type": OperationName.CAPABILITIES, "params": params})
 
 
-class StateResource[T](Resource[T]):
+class StateResource(Resource[T]):
     def __init__(
         self,
         send: Callable[[ClientEvent | ClientEventParam], T],
@@ -79,12 +81,12 @@ class StateResource[T](Resource[T]):
         return self._send({"type": OperationName.STATE, "params": params})
 
 
-class DiagnosticsResource[T](Resource[T]):
+class DiagnosticsResource(Resource[T]):
     def retrieve(self) -> T:
         return self._send({"type": OperationName.DIAGNOSTICS, "params": {}})
 
 
-class MuxResource[T](Resource[T]):
+class MuxResource(Resource[T]):
     def query(self, *, page: int | None = None, revision: int | None = None) -> T:
         params: dict[str, Any] = {}
         if page is not None:
@@ -100,6 +102,7 @@ class MuxResource[T](Resource[T]):
         pins: dict[str, int],
         config: dict[str, Any],
         parent: int | None = None,
+        parent_instance: int | None = None,
         controller: int | None = None,
     ) -> T:
         params: dict[str, Any] = {}
@@ -108,12 +111,13 @@ class MuxResource[T](Resource[T]):
         params["config"] = config
         if parent is not None:
             params["parent"] = parent
+            params["parent_instance"] = parent_instance
         if controller is not None:
             params["controller"] = controller
         return self._send({"type": OperationName.MUX_PREFLIGHT, "params": params})
 
 
-class ResourceResource[T](Resource[T]):
+class ResourceResource(Resource[T]):
     def preflight(
         self,
         *,
@@ -121,6 +125,7 @@ class ResourceResource[T](Resource[T]):
         pins: dict[str, int],
         config: dict[str, Any],
         parent: int | None = None,
+        parent_instance: int | None = None,
         controller: int | None = None,
     ) -> T:
         params: dict[str, Any] = {}
@@ -129,6 +134,7 @@ class ResourceResource[T](Resource[T]):
         params["config"] = config
         if parent is not None:
             params["parent"] = parent
+            params["parent_instance"] = parent_instance
         if controller is not None:
             params["controller"] = controller
         return self._send({"type": OperationName.RESOURCE_PREFLIGHT, "params": params})
@@ -140,6 +146,7 @@ class ResourceResource[T](Resource[T]):
         pins: dict[str, int],
         config: dict[str, Any],
         parent: int | None = None,
+        parent_instance: int | None = None,
         controller: int | None = None,
     ) -> T:
         params: dict[str, Any] = {}
@@ -148,6 +155,7 @@ class ResourceResource[T](Resource[T]):
         params["config"] = config
         if parent is not None:
             params["parent"] = parent
+            params["parent_instance"] = parent_instance
         if controller is not None:
             params["controller"] = controller
         return self._send({"type": OperationName.RESOURCE_OPEN, "params": params})
@@ -157,29 +165,32 @@ class ResourceResource[T](Resource[T]):
         params["resource"] = resource
         return self._send({"type": OperationName.RESOURCE_GET, "params": params})
 
-    def close(self, *, resource: int, cascade: bool | None = None) -> T:
+    def close(self, *, resource: int, instance: int, cascade: bool | None = None) -> T:
         params: dict[str, Any] = {}
         params["resource"] = resource
+        params["instance"] = instance
         if cascade is not None:
             params["cascade"] = cascade
         return self._send({"type": OperationName.RESOURCE_CLOSE, "params": params})
 
-    def recover(self, *, resource: int, cascade: bool | None = None) -> T:
+    def recover(self, *, resource: int, instance: int, cascade: bool | None = None) -> T:
         params: dict[str, Any] = {}
         params["resource"] = resource
+        params["instance"] = instance
         if cascade is not None:
             params["cascade"] = cascade
         return self._send({"type": OperationName.RESOURCE_RECOVER, "params": params})
 
-    def call(self, *, resource: int, action: str, args: dict[str, Any]) -> T:
+    def call(self, *, resource: int, instance: int, action: str, args: dict[str, Any]) -> T:
         params: dict[str, Any] = {}
         params["resource"] = resource
+        params["instance"] = instance
         params["action"] = action
         params["args"] = args
         return self._send({"type": OperationName.RESOURCE_CALL, "params": params})
 
 
-class JobResource[T](Resource[T]):
+class JobResource(Resource[T]):
     def get(self, *, job_id: int) -> T:
         params: dict[str, Any] = {}
         params["job_id"] = job_id
@@ -191,10 +202,10 @@ class JobResource[T](Resource[T]):
         return self._send({"type": OperationName.JOB_CANCEL, "params": params})
 
 
-class GpioResource[T](Resource[T]):
-    def group_read(self, *, resources: list[int]) -> T:
+class GpioResource(Resource[T]):
+    def group_read(self, *, resources: list[dict[str, int]]) -> T:
         params: dict[str, Any] = {}
-        params["resources"] = [{"resource": resource} for resource in resources]
+        params["resources"] = resources
         return self._send({"type": OperationName.GPIO_GROUP_READ, "params": params})
 
     def group_write(self, *, resources: list[dict[str, Any]]) -> T:
@@ -203,7 +214,7 @@ class GpioResource[T](Resource[T]):
         return self._send({"type": OperationName.GPIO_GROUP_WRITE, "params": params})
 
 
-class RmtResource[T](Resource[T]):
+class RmtResource(Resource[T]):
     def sync(self, *, resources: list[dict[str, Any]], timeout_ms: int | None = None) -> T:
         params: dict[str, Any] = {}
         params["resources"] = resources
@@ -212,7 +223,7 @@ class RmtResource[T](Resource[T]):
         return self._send({"type": OperationName.RMT_SYNC, "params": params})
 
 
-class BufferResource[T](Resource[T]):
+class BufferResource(Resource[T]):
     def create(self, *, size: int) -> T:
         params: dict[str, Any] = {}
         params["size"] = size
@@ -238,7 +249,7 @@ class BufferResource[T](Resource[T]):
         return self._send({"type": OperationName.BUFFER_DELETE, "params": params})
 
 
-class StorageResource[T](Resource[T]):
+class StorageResource(Resource[T]):
     def status(self) -> T:
         return self._send({"type": OperationName.STORAGE_STATUS, "params": {}})
 
@@ -307,7 +318,7 @@ class StorageResource[T](Resource[T]):
         return self._send({"type": OperationName.STORAGE_APPEND, "params": params})
 
 
-class OtaResource[T](Resource[T]):
+class OtaResource(Resource[T]):
     def status(self) -> T:
         return self._send({"type": OperationName.OTA_STATUS, "params": {}})
 
@@ -340,7 +351,7 @@ class OtaResource[T](Resource[T]):
         return self._send({"type": OperationName.OTA_ABORT, "params": params})
 
 
-class WifiResource[T](Resource[T]):
+class WifiResource(Resource[T]):
     def status(self) -> T:
         return self._send({"type": OperationName.WIFI_STATUS, "params": {}})
 
@@ -364,7 +375,7 @@ class WifiResource[T](Resource[T]):
         return self._send({"type": OperationName.WIFI_DISCONNECT, "params": {}})
 
 
-class MqttResource[T](Resource[T]):
+class MqttResource(Resource[T]):
     def status(self) -> T:
         return self._send({"type": OperationName.MQTT_STATUS, "params": {}})
 
@@ -456,7 +467,7 @@ class MqttResource[T](Resource[T]):
         return self._send({"type": OperationName.MQTT_STOP, "params": {}})
 
 
-class EspnowResource[T](Resource[T]):
+class EspnowResource(Resource[T]):
     def status(self) -> T:
         return self._send({"type": OperationName.ESPNOW_STATUS, "params": {}})
 
@@ -505,7 +516,7 @@ class EspnowResource[T](Resource[T]):
         return self._send({"type": OperationName.ESPNOW_RECEIVE, "params": {}})
 
 
-class PowerResource[T](Resource[T]):
+class PowerResource(Resource[T]):
     def configure(
         self,
         *,
@@ -537,7 +548,7 @@ class PowerResource[T](Resource[T]):
         return self._send({"type": OperationName.POWER_SLEEP, "params": params})
 
 
-class SystemResource[T](Resource[T]):
+class SystemResource(Resource[T]):
     def info(self) -> T:
         return self._send({"type": OperationName.SYSTEM_INFO, "params": {}})
 
@@ -553,7 +564,7 @@ class SystemResource[T](Resource[T]):
         return self._send({"type": OperationName.SYSTEM_NVS_FORMAT, "params": params})
 
 
-class FlowResource[T](Resource[T]):
+class FlowResource(Resource[T]):
     def load(self, *, name: str) -> T:
         params: dict[str, Any] = {}
         params["name"] = name
@@ -593,7 +604,7 @@ class FlowResource[T](Resource[T]):
         return self._send({"type": OperationName.FLOW_REMOVE, "params": params})
 
 
-class Resources[T]:
+class Resources(Generic[T]):
     def __init__(
         self,
         send: Callable[[ClientEvent | ClientEventParam], T],

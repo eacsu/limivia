@@ -1,6 +1,6 @@
 """公开业务返回类型、raw 接口与事件 discriminator 的静态检查。"""
 
-from typing import assert_type
+from typing_extensions import assert_type
 
 from limivia import AsyncLimivia, EventType, Level, Limivia, Pins, TransportKind
 from limivia.constants import Edge, OperationName, Parity, PeripheralKind, Pull, UARTMode

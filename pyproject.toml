@@ -1,13 +1,24 @@
 [project]
 name = "limivia"
-version = "0.3.0a3"
+version = "0.3.0"
 description = "LIMIVIA：事件式协议v3 Python SDK"
 authors = [{name = "migo", email = "1695587905@qq.com"}]
 readme = "README.md"
 license = "AGPL-3.0-only"
 license-files = ["LICENSE"]
-requires-python = ">=3.12,<3.13"
-dependencies = ["pydantic>=2,<3", "bleak>=1,<4", "pyserial>=3.5,<4", "anyio>=4,<5", "typer>=0.15,<1", "websockets>=15,<16", "paho-mqtt>=2.1,<3"]
+requires-python = ">=3.10,<3.13"
+dependencies = [
+    "pydantic>=2,<3",
+    "bleak>=3,<4",
+    "pyserial>=3.5,<4",
+    "anyio>=4,<5",
+    "typer>=0.15,<1",
+    "websockets>=15,<16",
+    "paho-mqtt>=2.1,<3",
+    "typing-extensions>=4.12,<5",
+    "async-timeout>=5,<6; python_version < '3.11'",
+    "dbus-fast==3.1.2; sys_platform == 'linux' and python_version < '3.11'",
+]
 
 [project.scripts]
 limivia = "limivia.commands.app:app"
@@ -27,9 +38,11 @@ include = [
 pytest = ">=8,<9"
 ruff = ">=0.11,<1"
 mypy = ">=1,<2"
+# mypy 以 3.10 为目标，在 3.11/3.12 开发环境也需要回移库的类型。
+async-timeout = ">=5,<6"
 
 [tool.ruff]
-target-version = "py312"
+target-version = "py310"
 line-length = 100
 
 [tool.ruff.lint.per-file-ignores]
@@ -37,6 +50,7 @@ line-length = 100
 "examples/*/*.py" = ["SIM117"]
 
 [tool.mypy]
+python_version = "3.10"
 files = ["src/limivia", "tests/typecheck.py", "examples"]
 check_untyped_defs = true
 

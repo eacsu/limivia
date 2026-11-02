@@ -1,9 +1,8 @@
-import asyncio
 
 from limivia import AsyncLimivia, TransportKind
 from limivia.constants import NotificationTopic
 
-from .._common import run
+from .._common import run, timeout_after
 
 
 async def main():
@@ -13,7 +12,7 @@ async def main():
             topics=[NotificationTopic.JOB, NotificationTopic.RESOURCE, NotificationTopic.DATA]
         ) as updates:
             try:
-                async with asyncio.timeout(2):
+                async with timeout_after(2):
                     async for event in updates:
                         print(event.to_json())
             except TimeoutError:

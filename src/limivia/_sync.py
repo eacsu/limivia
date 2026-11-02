@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from functools import partial
-from typing import TYPE_CHECKING, Any, Self, Unpack
+from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
 from anyio.from_thread import BlockingPortal
+from typing_extensions import Self, Unpack
 
 from ._board import AsyncBoard, AsyncJob, AsyncSubscription, Topic
 from ._peripherals import AsyncADCInput, AsyncGPIOPin, AsyncPWMOutput, AsyncResource, AsyncUARTPort
@@ -30,14 +31,18 @@ from .types import (
 from .types.results import (
     ADCSample,
     GPIOConfig,
+    GPIOState,
     OperationResult,
     PeripheralEvents,
     PWMConfig,
+    PWMState,
     UARTConfig,
 )
 
+R = TypeVar("R", bound=AsyncResource)
 
-class Resource[R: AsyncResource]:
+
+class Resource(Generic[R]):
     def __init__(self, resource: R, portal: BlockingPortal):
         self._async = resource
         self._portal = portal
@@ -74,16 +79,16 @@ class GPIOPin(Resource[AsyncGPIOPin]):
     def read(self) -> int:
         return self._portal.call(self._async.read)
 
-    def write(self, value: int) -> None:
-        self._portal.call(self._async.write, value)
+    def write(self, value: int) -> GPIOState:
+        return self._portal.call(self._async.write, value)
 
     def events(self) -> PeripheralEvents:
         return self._portal.call(self._async.events)
 
 
 class PWMOutput(Resource[AsyncPWMOutput]):
-    def set_duty(self, duty: float) -> None:
-        self._portal.call(self._async.set_duty, duty)
+    def set_duty(self, duty: float) -> PWMState:
+        return self._portal.call(self._async.set_duty, duty)
 
     def fade(self, duty: float, *, duration_ms: int) -> None:
         self._portal.call(partial(self._async.fade, duty, duration_ms=duration_ms))

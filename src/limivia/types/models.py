@@ -5,32 +5,36 @@ import re
 from typing import Any, Literal
 
 from pydantic import ConfigDict, Field, SecretStr, field_validator
+from typing_extensions import TypeAliasType
 
 from .._models import Model
 from ..constants import ErrorSource, MQTTProtocol
 
-type LinkKind = Literal["usb", "ble", "ws", "mqtt"]
-type Profile = Literal["bus", "signal", "iot"]
-type ResourceKind = Literal[
-    "gpio",
-    "pwm",
-    "adc",
-    "adc.continuous",
-    "uart",
-    "i2c.master",
-    "i2c.device",
-    "i2c.slave",
-    "spi.master",
-    "spi.device",
-    "spi.slave",
-    "twai",
-    "rmt.tx",
-    "rmt.rx",
-    "i2s",
-    "sigma_delta",
-    "timer",
-    "temperature",
-]
+LinkKind = TypeAliasType("LinkKind", Literal["usb", "ble", "ws", "mqtt"])
+Profile = TypeAliasType("Profile", Literal["bus", "signal", "iot"])
+ResourceKind = TypeAliasType(
+    "ResourceKind",
+    Literal[
+        "gpio",
+        "pwm",
+        "adc",
+        "adc.continuous",
+        "uart",
+        "i2c.master",
+        "i2c.device",
+        "i2c.slave",
+        "spi.master",
+        "spi.device",
+        "spi.slave",
+        "twai",
+        "rmt.tx",
+        "rmt.rx",
+        "i2s",
+        "sigma_delta",
+        "timer",
+        "temperature",
+    ],
+)
 
 
 class DeviceInfo(Model):
@@ -42,7 +46,7 @@ class DeviceIdentity(Model):
     model_config = ConfigDict(extra="allow", strict=True, frozen=True)
     protocol: Literal[3]
     jsonrpc: Literal["2.0"]
-    contract: Literal["limivia-v3-jsonrpc2"]
+    contract: Literal["limivia-v3-jsonrpc2-r2"]
     firmware: str
     board: Literal["luatos-esp32c3-usb"]
     device_id: str
@@ -200,7 +204,7 @@ class MQTTOptions(WebSocketOptions):
         return value
 
 
-type ConnectionOptions = WebSocketOptions | MQTTOptions
+ConnectionOptions = TypeAliasType("ConnectionOptions", WebSocketOptions | MQTTOptions)
 
 
 class ParameterInfo(Model):

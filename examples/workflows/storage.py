@@ -5,7 +5,7 @@ import uuid
 from limivia import Limivia, TransportKind
 from limivia.types import BinaryResult
 
-from .._common import run
+from .._common import add_note, run
 
 
 def main():
@@ -27,7 +27,7 @@ def main():
             result = board.storage.read(name=name, offset=0, length=4096)
             assert BinaryResult.model_validate(result.data).to_bytes() == data
         finally:
-            original = sys.exception()
+            original = sys.exc_info()[1]
             try:
                 if committed:
                     board.storage.delete(name=name)
@@ -36,7 +36,7 @@ def main():
             except Exception as error:
                 if original is None:
                     raise
-                original.add_note(f"上传/文件清理未确认：{error}")
+                add_note(original, f"上传/文件清理未确认：{error}")
 
 
 if __name__ == "__main__":

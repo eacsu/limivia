@@ -1,6 +1,7 @@
 from typing import Annotated, Any, Literal
 
 from pydantic import Field
+from typing_extensions import TypeAliasType
 
 from .._models import Model
 from ..constants import EventType
@@ -147,27 +148,30 @@ class NotificationGapEvent(Model):
     dropped: int
 
 
-type DeviceEvent = Annotated[
-    DiscoveryCompletedEvent
-    | StateSnapshotCompletedEvent
-    | RpcErrorEvent
-    | NotificationGapEvent
-    | HelloCompletedEvent
-    | StateCompletedEvent
-    | CapabilitiesCompletedEvent
-    | ResourceGetCompletedEvent
-    | DiagnosticsCompletedEvent
-    | CommandCompletedEvent
-    | CommandAcceptedEvent
-    | JobCompletedEvent
-    | JobFailedEvent
-    | JobCancelledEvent
-    | CommandFailedEvent
-    | JobFinishedEvent
-    | StateChangedEvent
-    | DataAvailableEvent
-    | ProtocolErrorEvent
-    | UnknownEvent
-    | ConnectionClosedEvent,
-    Field(discriminator="type"),
-]
+DeviceEvent = TypeAliasType(
+    "DeviceEvent",
+    Annotated[
+        DiscoveryCompletedEvent
+        | StateSnapshotCompletedEvent
+        | RpcErrorEvent
+        | NotificationGapEvent
+        | HelloCompletedEvent
+        | StateCompletedEvent
+        | CapabilitiesCompletedEvent
+        | ResourceGetCompletedEvent
+        | DiagnosticsCompletedEvent
+        | CommandCompletedEvent
+        | CommandAcceptedEvent
+        | JobCompletedEvent
+        | JobFailedEvent
+        | JobCancelledEvent
+        | CommandFailedEvent
+        | JobFinishedEvent
+        | StateChangedEvent
+        | DataAvailableEvent
+        | ProtocolErrorEvent
+        | UnknownEvent
+        | ConnectionClosedEvent,
+        Field(discriminator="type"),
+    ],
+)

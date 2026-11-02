@@ -5,14 +5,19 @@ from __future__ import annotations
 import asyncio
 import base64
 import struct
-from typing import TYPE_CHECKING, Any, Self, Unpack
+from typing import TYPE_CHECKING, Any, TypeVar
 
+from pydantic import ValidationError
+from typing_extensions import Self, Unpack
+
+from ._compat import timeout_after
 from ._dispatch import Ticket, payload
 from ._exceptions import (
     DeviceConnectionError,
     DeviceRejectedError,
     OperationError,
     ResourceCleanupError,
+    ResultUnknownError,
 )
 from ._lifecycle import cleanup
 from .constants import (
@@ -28,15 +33,30 @@ from .constants import (
 from .types import BinaryResult, ResourceInfo, ResourceKind
 from .types.results import (
     ADCSample,
+    ConfirmedState,
     GPIOConfig,
+    GPIOState,
     OperationResult,
     PeripheralEvents,
     PWMConfig,
+    PWMState,
     UARTConfig,
 )
 
 if TYPE_CHECKING:
     from ._board import AsyncBoard
+
+
+T = TypeVar("T", bound=ConfirmedState)
+
+
+def _confirmed(model: type[T], data: dict) -> T:
+    try:
+        return model.model_validate(data)
+    except ValidationError as exc:
+        raise ResultUnknownError(
+            "设备回复缺少确认状态；请先查询，勿重发写操作", may_have_executed=True
+        ) from exc
 
 
 class AsyncResource:
@@ -58,6 +78,7 @@ class AsyncResource:
             self._args["controller"] = controller
         self._boot = board.identity.boot_id if board.identity else None
         self._info: ResourceInfo | None = None
+        self._initial_state: OperationResult | None = None
         self._ticket: Ticket | None = None
         self._opening: asyncio.Task | None = None
         self._close_task: asyncio.Task | None = None
@@ -71,18 +92,25 @@ class AsyncResource:
         """高级诊断快照；业务方法无需读取其中的资源 ID。"""
         return self._info.model_copy(deep=True) if self._info else None
 
+    @property
+    def initial_state(self) -> OperationResult | None:
+        """open 回复携带的初始设备读数；无需额外查询。"""
+        return self._initial_state.model_copy(deep=True) if self._initial_state else None
+
     def _identity(self):
-        if self._board.identity is None or self._board.identity.boot_id != self._boot:
+        if (
+            self._board._core._closed
+            or self._board.identity is None
+            or self._board.identity.boot_id != self._boot
+        ):
             raise DeviceConnectionError("资源所属连接/boot 已失效")
 
     async def _validate(self) -> ResourceInfo:
         self._identity()
         if self._info is None:
             raise DeviceConnectionError("资源尚未打开；请进入上下文或显式 open()")
-        current = await self._board._resource_info(self._info.id)
-        if current.instance != self._info.instance:
-            raise DeviceConnectionError("资源实例已变化，旧句柄失效")
-        return current
+        # Firmware checks the expected instance atomically at admission and execution.
+        return self._info
 
     async def _do_open(self):
         self._identity()
@@ -91,15 +119,23 @@ class AsyncResource:
                 raise ValueError("父资源必须来自同一连接")
             info = await self._parent._validate()
             self._args["parent"] = info.id
+            self._args["parent_instance"] = info.instance
         from .protocol import parse_command
 
         command = parse_command({"type": OperationName.RESOURCE_OPEN, "params": self._args})
         await self._board._prepare(command)
         self._ticket = self._board._hub.submit(command)
         event = await self._ticket.wait()
-        if event.type != EventType.JOB_COMPLETED or not event.job.resource:
+        data = payload(event)
+        if event.type == EventType.COMMAND_COMPLETED and "info" in data:
+            self._info = ResourceInfo.model_validate(data["info"])
+            self._initial_state = OperationResult(
+                data={k: v for k, v in data.items() if k != "info"}
+            )
+        elif event.type == EventType.JOB_COMPLETED and event.job.resource:
+            self._info = await self._board._resource_info(event.job.resource)
+        else:
             raise DeviceConnectionError("资源打开响应缺少确认的资源身份")
-        self._info = await self._board._resource_info(event.job.resource)
         if self._info.state != ResourceState.READY:
             raise DeviceConnectionError(f"资源未就绪：{self._info.state}")
         return self
@@ -148,12 +184,20 @@ class AsyncResource:
                     OperationName.RESOURCE_CALL,
                     {
                         "resource": info.id,
+                        "instance": info.instance,
                         "action": action,
                         "args": args,
                     },
                     control=not observer,
                 )
-                return OperationResult(data=payload(event))
+                data = payload(event)
+                if "resource" in data and (
+                    data["resource"] != info.id or data.get("instance") != info.instance
+                ):
+                    raise ResultUnknownError(
+                        "设备回复的资源实例不匹配；请先查询", may_have_executed=True
+                    )
+                return OperationResult(data=data)
 
         # 锁由后台操作持有；取消调用者只取消等待，不允许 close 越过在途操作。
         task = asyncio.create_task(perform(), name="limivia-resource-call")
@@ -196,58 +240,53 @@ class AsyncResource:
 
     async def _close(self, cascade: bool, recover: bool):
         try:
-            async with asyncio.timeout(self._board._cleanup_timeout):
-                async with self._lock:
-                    await self._resolve_open()
-                    if self._info is not None:
-                        await self._validate()
-                        op = (
-                            OperationName.RESOURCE_RECOVER
-                            if recover
-                            else OperationName.RESOURCE_CLOSE
-                        )
-                        args: dict[str, Any] = {"resource": self._info.id}
-                        if cascade:
-                            args["cascade"] = True
-                        tree = [self._info]
-                        if cascade:
-                            snapshot = await self._board.state.snapshot()
-                            ids = {self._info.id}
-                            for _ in snapshot.resources:
-                                ids.update(r.id for r in snapshot.resources if r.parent in ids)
-                            tree = [r for r in snapshot.resources if r.id in ids]
-                            if not tree:
-                                tree = [self._info]
-                        await self._board._request(op, args)
-                        # cascade RPC 仅确认 closing；普通 close 也确认资源已删除。
-                        for original in tree:
-                            while True:
-                                try:
-                                    current = await self._board._resource_info(original.id)
-                                except DeviceRejectedError as exc:
-                                    if (
-                                        exc.error
-                                        and exc.error.reason == ErrorReason.RESOURCE_NOT_FOUND
-                                    ):
-                                        break
-                                    raise
-                                if current.instance != original.instance:
+            async with timeout_after(self._board._cleanup_timeout), self._lock:
+                await self._resolve_open()
+                if self._info is not None:
+                    await self._validate()
+                    op = OperationName.RESOURCE_RECOVER if recover else OperationName.RESOURCE_CLOSE
+                    args: dict[str, Any] = {
+                        "resource": self._info.id,
+                        "instance": self._info.instance,
+                    }
+                    if cascade:
+                        args["cascade"] = True
+                    tree = [self._info]
+                    if cascade:
+                        snapshot = await self._board.state.snapshot()
+                        ids = {self._info.id}
+                        for _ in snapshot.resources:
+                            ids.update(r.id for r in snapshot.resources if r.parent in ids)
+                        tree = [r for r in snapshot.resources if r.id in ids]
+                        if not tree:
+                            tree = [self._info]
+                    await self._board._request(op, args)
+                    # cascade RPC 仅确认 closing；普通 close 也确认资源已删除。
+                    for original in tree:
+                        while True:
+                            try:
+                                current = await self._board._resource_info(original.id)
+                            except DeviceRejectedError as exc:
+                                if exc.error and exc.error.reason == ErrorReason.RESOURCE_NOT_FOUND:
                                     break
-                                if current.state == ResourceState.FAULT:
-                                    error = ResourceCleanupError("资源关闭后进入 fault，仍保留占用")
-                                    error.resource_info = current
-                                    raise error
-                                await asyncio.sleep(self._board._core._poll)
-                        if cascade:
-                            removed = {(r.id, r.instance) for r in tree}
-                            for owned in self._board._owned.copy():
-                                if (
-                                    owned is not self
-                                    and owned._info
-                                    and (owned._info.id, owned._info.instance) in removed
-                                ):
-                                    owned._closed = True
-                                    self._board._owned.remove(owned)
+                                raise
+                            if current.instance != original.instance:
+                                break
+                            if current.state == ResourceState.FAULT:
+                                error = ResourceCleanupError("资源关闭后进入 fault，仍保留占用")
+                                error.resource_info = current
+                                raise error
+                            await asyncio.sleep(self._board._core._poll)
+                    if cascade:
+                        removed = {(r.id, r.instance) for r in tree}
+                        for owned in self._board._owned.copy():
+                            if (
+                                owned is not self
+                                and owned._info
+                                and (owned._info.id, owned._info.instance) in removed
+                            ):
+                                owned._closed = True
+                                self._board._owned.remove(owned)
             self._closed = True
             if self in self._board._owned:
                 self._board._owned.remove(self)
@@ -292,16 +331,16 @@ class AsyncGPIOPin(AsyncResource):
     async def read(self) -> int:
         return (await self.call(ResourceAction.READ)).data["level"]
 
-    async def write(self, value: int) -> None:
-        await self.call(ResourceAction.WRITE, level=value)
+    async def write(self, value: int) -> GPIOState:
+        return _confirmed(GPIOState, (await self.call(ResourceAction.WRITE, level=value)).data)
 
     async def events(self) -> PeripheralEvents:
         return PeripheralEvents.model_validate((await self.call(ResourceAction.EVENTS)).data)
 
 
 class AsyncPWMOutput(AsyncResource):
-    async def set_duty(self, duty: float) -> None:
-        await self.call(ResourceAction.DUTY, duty=duty)
+    async def set_duty(self, duty: float) -> PWMState:
+        return _confirmed(PWMState, (await self.call(ResourceAction.DUTY, duty=duty)).data)
 
     async def fade(self, duty: float, *, duration_ms: int) -> None:
         """等待驱动启动渐变；固件不提供渐变物理结束确认。"""

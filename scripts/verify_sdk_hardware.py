@@ -18,6 +18,7 @@ from typing import Any
 
 import limivia
 from limivia import AsyncLimivia
+from limivia._compat import timeout_after
 from limivia.transports import DeviceBackend
 
 PORT = "/dev/serial/by-id/usb-Espressif_USB_JTAG_serial_debug_unit_E4:B0:63:CA:B4:78-if00"
@@ -173,7 +174,7 @@ class Harness:
         raise TimeoutError("explicit link recovery failed; no write replay")
 
     async def wait(self, rid, *, accepted=False):
-        async with asyncio.timeout(50):
+        async with timeout_after(50):
             while True:
                 queued = self.backlog.get(rid, [])
                 event = queued.pop(0) if queued else await self.connection.recv()

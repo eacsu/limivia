@@ -12,6 +12,7 @@ from urllib.parse import urlsplit
 from paho.mqtt import client as mqtt
 from websockets.asyncio.client import ClientConnection, connect
 
+from ._compat import wait_for
 from .constants import MQTTProtocol
 from .types import MQTTOptions, WebSocketOptions
 
@@ -203,7 +204,7 @@ class MQTTTransport:
         await asyncio.shield(self._connect_task)
         self.client.loop_start()
         try:
-            await asyncio.wait_for(asyncio.shield(self.ready), timeout=10)
+            await wait_for(asyncio.shield(self.ready), timeout=10)
         except BaseException:
             await self.close()
             raise

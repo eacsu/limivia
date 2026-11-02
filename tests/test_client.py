@@ -4,6 +4,7 @@ import threading
 import pytest
 
 from limivia import AsyncLimivia, DeviceConnectionError, Limivia, QueueFullError
+from limivia._compat import timeout_after
 from limivia.types import JobCompletedEvent
 from tests.fakes import FakeBackend, result
 
@@ -102,7 +103,7 @@ def test_stop_bypasses_eight_jobs_and_revokes_control():
 
 def test_payload_is_owned_after_submit():
     async def case(c, t):
-        params = {"resource": 1, "action": "write", "args": {"data": b"abc"}}
+        params = {"resource": 1, "instance": 1, "action": "write", "args": {"data": b"abc"}}
         request = await c.send({"type": "resource.call", "params": params})
         params["args"]["data"] = b"def"
         await result(c, request)
@@ -175,7 +176,7 @@ def test_old_session_notifications_and_duplicate_responses_are_ignored():
         assert (await result(c, request)).type == "state.completed"
         await t.emit({"id": t.commands[-1]["id"], "ok": True, "result": {}})
         with pytest.raises(TimeoutError):
-            async with asyncio.timeout(0.03):
+            async with timeout_after(0.03):
                 await c.recv()
 
     run(connect_test(case))
@@ -183,6 +184,7 @@ def test_old_session_notifications_and_duplicate_responses_are_ignored():
 
 def test_raw_overflow_is_explicit_and_does_not_close_business_connection():
     from limivia import SubscriptionOverflowError
+
     async def case():
         backend = FakeBackend()
         async with AsyncLimivia(backend=backend, event_queue_size=1) as client:
@@ -194,6 +196,7 @@ def test_raw_overflow_is_explicit_and_does_not_close_business_connection():
                     await raw.recv()
                 assert (await board.state.retrieve()).page == 0
                 assert not board._core._closed
+
     run(case())
 
 
@@ -263,7 +266,7 @@ def test_stop_does_not_rebind_queued_old_control_to_a_new_token():
         t.silent_op = "state"
         first = await c.state.retrieve()
         await asyncio.sleep(0.01)
-        old = await c.resource.call(resource=1, action="write", args={"data": b"a"})
+        old = await c.resource.call(resource=1, instance=1, action="write", args={"data": b"a"})
         stop = await c.outputs.stop()
         observed = {}
         while old not in observed or stop not in observed:
@@ -305,7 +308,7 @@ def test_device_control_required_clears_stale_local_token():
             "error": {"code": "control_required"},
         }
         event = await result(
-            c, await c.resource.call(resource=1, action="write", args={"data": b"a"})
+            c, await c.resource.call(resource=1, instance=1, action="write", args={"data": b"a"})
         )
         assert event.type == "command.failed" and c._core._control is None
 
@@ -382,3 +385,22 @@ def test_job_deadline_does_not_wait_for_or_cancel_a_longer_query_rpc():
         assert sum(x["op"] == "system.time" for x in t.commands) == 1
 
     run(connect_test(case, timeout=0.5, job_timeout=0.03))
+
+
+def test_heartbeat_waits_for_slow_reply_within_session_lease():
+    async def case(c, t):
+        await c.recv()
+        original = t.handle
+
+        async def slow_ping(wire):
+            if wire["method"] == "session.ping":
+                await asyncio.sleep(0.03)
+            await original(wire)
+
+        t.handle = slow_ping
+        c._core._heartbeat_interval = 0.01
+        await asyncio.sleep(0.08)
+        assert any(x["op"] == "session.ping" for x in t.commands)
+        assert not c._core._closed
+
+    run(connect_test(case, timeout=0.2))
